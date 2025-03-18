@@ -4,9 +4,13 @@ mod legacy;
 mod profiles;
 mod skeletal;
 
+pub mod devices;
+
 #[cfg(test)]
 mod tests;
 
+use devices::tracked_device::TrackedDevice;
+use devices::TrackedDeviceList;
 use profiles::MainAxisType;
 pub use profiles::{InteractionProfile, Profiles};
 use skeletal::FingerState;
@@ -20,7 +24,7 @@ use custom_bindings::{BindingData, GrabActions};
 use glam::Quat;
 use legacy::LegacyActionData;
 use log::{debug, info, trace, warn};
-use openvr::{self as vr, space_relation_to_openvr_pose};
+use openvr as vr;
 use openxr as xr;
 use slotmap::{new_key_type, Key, KeyData, SecondaryMap, SlotMap};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -48,12 +52,13 @@ pub struct Input<C: openxr_data::Compositor> {
     action_map: RwLock<SlotMap<ActionKey, Action>>,
     set_map: RwLock<SlotMap<ActionSetKey, String>>,
     loaded_actions_path: OnceLock<PathBuf>,
-    cached_poses: Mutex<CachedSpaces>,
     legacy_state: legacy::LegacyState,
     skeletal_tracking_level: RwLock<vr::EVRSkeletalTrackingLevel>,
     profile_map: HashMap<xr::Path, &'static profiles::ProfileProperties>,
     estimated_finger_state: [Mutex<FingerState>; 2],
     events: Mutex<VecDeque<InputEvent>>,
+
+    pub devices: RwLock<TrackedDeviceList>,
 }
 
 struct InputEvent {
@@ -92,6 +97,7 @@ impl<T> Drop for WriteOnDrop<T> {
 
 impl<C: openxr_data::Compositor> Input<C> {
     pub fn new(openxr: Arc<OpenXrData<C>>) -> Self {
+        let devices = RwLock::new(TrackedDeviceList::new(&openxr.instance));
         let mut map = SlotMap::with_key();
         let left_hand_key = map.insert(c"/user/hand/left".into());
         let right_hand_key = map.insert(c"/user/hand/right".into());
@@ -126,10 +132,10 @@ impl<C: openxr_data::Compositor> Input<C> {
             input_source_map: RwLock::new(map),
             action_map: Default::default(),
             set_map: Default::default(),
+            devices,
             loaded_actions_path: OnceLock::new(),
             left_hand_key,
             right_hand_key,
-            cached_poses: Mutex::default(),
             legacy_state: Default::default(),
             skeletal_tracking_level: RwLock::new(vr::EVRSkeletalTrackingLevel::Estimated),
             profile_map,
@@ -145,9 +151,14 @@ impl<C: openxr_data::Compositor> Input<C> {
         if handle == vr::k_ulInvalidInputValueHandle {
             Some(xr::Path::NULL)
         } else {
+            let devices = self.devices.read().ok()?;
+
+            let left_hand = devices.get_controller(Hand::Left.into());
+            let right_hand = devices.get_controller(Hand::Right.into());
+
             match InputSourceKey::from(KeyData::from_ffi(handle)) {
-                x if x == self.left_hand_key => Some(self.openxr.left_hand.subaction_path),
-                x if x == self.right_hand_key => Some(self.openxr.right_hand.subaction_path),
+                x if x == self.left_hand_key => Some(left_hand.subaction_path),
+                x if x == self.right_hand_key => Some(right_hand.subaction_path),
                 _ => None,
             }
         }
@@ -557,7 +568,6 @@ impl<C: openxr_data::Compositor> vr::IVRInput010_Interface for Input<C> {
 
         if let Some(hand_tracker) = hand_tracker.as_ref() {
             self.get_bones_from_hand_tracking(
-                &self.openxr,
                 &session_data,
                 transform_space,
                 hand_tracker,
@@ -734,16 +744,21 @@ impl<C: openxr_data::Compositor> vr::IVRInput010_Interface for Input<C> {
             }};
         }
         let subaction_path = get_subaction_path!(self, restrict_to_device, action_data);
+        let devices = self.devices.read().unwrap();
+
+        let left_hand = devices.get_controller(Hand::Left.into());
+        let right_hand = devices.get_controller(Hand::Right.into());
+
         let (active_origin, hand) = match loaded.try_get_action(action) {
             Ok(ActionData::Pose) => {
                 let (mut hand, interaction_profile) = match subaction_path {
-                    x if x == self.openxr.left_hand.subaction_path => (
+                    x if x == left_hand.subaction_path => (
                         Some(Hand::Left),
-                        Some(self.openxr.left_hand.profile_path.load()),
+                        Some(left_hand.get_base_device().profile_path.load()),
                     ),
-                    x if x == self.openxr.right_hand.subaction_path => (
+                    x if x == right_hand.subaction_path => (
                         Some(Hand::Right),
-                        Some(self.openxr.right_hand.profile_path.load()),
+                        Some(right_hand.get_base_device().profile_path.load()),
                     ),
                     x if x == xr::Path::NULL => (None, None),
                     _ => unreachable!(),
@@ -751,9 +766,12 @@ impl<C: openxr_data::Compositor> vr::IVRInput010_Interface for Input<C> {
 
                 let get_first_bound_hand_profile = || {
                     loaded
-                        .try_get_pose(action, self.openxr.left_hand.profile_path.load())
+                        .try_get_pose(action, left_hand.get_base_device().profile_path.load())
                         .or_else(|_| {
-                            loaded.try_get_pose(action, self.openxr.right_hand.profile_path.load())
+                            loaded.try_get_pose(
+                                action,
+                                right_hand.get_base_device().profile_path.load(),
+                            )
                         })
                         .ok()
                 };
@@ -818,6 +836,7 @@ impl<C: openxr_data::Compositor> vr::IVRInput010_Interface for Input<C> {
         };
 
         drop(data);
+
         unsafe {
             action_data.write(vr::InputPoseActionData_t {
                 bActive: true,
@@ -1212,58 +1231,64 @@ impl<C: openxr_data::Compositor> Input<C> {
         origin: Option<vr::ETrackingUniverseOrigin>,
     ) {
         tracy_span!();
-        poses[0] = self.get_hmd_pose(origin);
+        let devices = self.devices.read().unwrap();
+        let session_data = self.openxr.session_data.get();
 
-        if poses.len() > Hand::Left as usize {
-            poses[Hand::Left as usize] = self.get_controller_pose(Hand::Left, origin);
-        }
-        if poses.len() > Hand::Right as usize {
-            poses[Hand::Right as usize] = self.get_controller_pose(Hand::Right, origin);
-        }
-    }
+        poses.iter_mut().enumerate().for_each(|(i, pose)| {
+            let device = devices.get_device(i as u32);
 
-    fn get_hmd_pose(&self, origin: Option<vr::ETrackingUniverseOrigin>) -> vr::TrackedDevicePose_t {
-        tracy_span!();
-        let mut spaces = self.cached_poses.lock().unwrap();
-        let data = self.openxr.session_data.get();
-        spaces.get_pose_impl(
-            &self.openxr,
-            &data,
-            self.openxr.display_time.get(),
-            None,
-            origin.unwrap_or(data.current_origin),
-        )
+            if let Some(device) = device {
+                *pose = device
+                    .get_pose(
+                        &self.openxr,
+                        &session_data,
+                        origin.unwrap_or(session_data.current_origin),
+                    )
+                    .unwrap_or_default();
+            }
+        });
     }
 
     pub fn get_controller_pose(
         &self,
         hand: Hand,
         origin: Option<vr::ETrackingUniverseOrigin>,
-    ) -> vr::TrackedDevicePose_t {
+    ) -> Option<vr::TrackedDevicePose_t> {
+        self.get_device_pose(hand.into(), origin)
+    }
+
+    pub fn get_device_pose(
+        &self,
+        index: vr::TrackedDeviceIndex_t,
+        origin: Option<vr::ETrackingUniverseOrigin>,
+    ) -> Option<vr::TrackedDevicePose_t> {
         tracy_span!();
-        let mut spaces = self.cached_poses.lock().unwrap();
-        let data = self.openxr.session_data.get();
-        spaces.get_pose_impl(
+
+        let session_data = self.openxr.session_data.get();
+
+        self.devices.read().ok()?.get_device(index)?.get_pose(
             &self.openxr,
-            &data,
-            self.openxr.display_time.get(),
-            Some(hand),
-            origin.unwrap_or(data.current_origin),
+            &session_data,
+            origin.unwrap_or(session_data.current_origin),
         )
     }
 
     pub fn frame_start_update(&self) {
         tracy_span!();
-        std::mem::take(&mut *self.cached_poses.lock().unwrap());
         let data = self.openxr.session_data.get();
-        let input_data = &data.input_data;
-        if let Some(loaded) = input_data.get_loaded_actions() {
+        let devices = self.devices.read().unwrap();
+
+        let left_hand = devices.get_controller(Hand::Left.into());
+        let right_hand = devices.get_controller(Hand::Right.into());
+
+        if let Some(loaded) = data.input_data.loaded_actions.get() {
             // If the game has loaded actions, we shouldn't need to sync the state because the game
             // should be doing it itself with UpdateActionState. However, some games (Tea for God)
             // don't actually call UpdateActionState if no controllers are reported as connected,
             // and interaction profiles are only updated after xrSyncActions is called. So here, we
             // do an action sync to try and get the runtime to update the interaction profile.
-            if !self.openxr.left_hand.connected() || !self.openxr.right_hand.connected() {
+            let loaded = loaded.read().unwrap();
+            if !left_hand.connected() || !right_hand.connected() {
                 debug!("no controllers connected - syncing info set");
                 data.session
                     .sync_actions(&[xr::ActiveActionSet::new(&loaded.info_set)])
@@ -1303,18 +1328,31 @@ impl<C: openxr_data::Compositor> Input<C> {
                     );
                     return;
                 }
-                self.setup_legacy_actions();
+                let legacy = LegacyActionData::new(
+                    &self.openxr.instance,
+                    left_hand.subaction_path,
+                    right_hand.subaction_path,
+                );
+                setup_legacy_bindings(&self.openxr.instance, &data.session, &legacy);
+                data.input_data
+                    .legacy_actions
+                    .set(legacy)
+                    .unwrap_or_else(|_| unreachable!());
             }
         }
     }
 
     fn get_profile_data(&self, hand: Hand) -> Option<&profiles::ProfileProperties> {
-        let hand = match hand {
-            Hand::Left => &self.openxr.left_hand,
-            Hand::Right => &self.openxr.right_hand,
-        };
-        let profile = hand.profile_path.load();
-        self.profile_map.get(&profile).map(|v| &**v)
+        let path = self
+            .devices
+            .read()
+            .ok()?
+            .get_device(hand.into())?
+            .get_base_device()
+            .profile_path
+            .load();
+
+        self.profile_map.get(&path).map(|v| &**v)
     }
 
     pub fn get_controller_string_tracked_property(
@@ -1433,76 +1471,6 @@ impl<C: openxr_data::Compositor> Input<C> {
             false
         }
     }
-}
-
-#[derive(Default)]
-struct CachedSpaces {
-    seated: CachedPoses,
-    standing: CachedPoses,
-}
-
-#[derive(Default)]
-struct CachedPoses {
-    head: Option<vr::TrackedDevicePose_t>,
-    left: Option<vr::TrackedDevicePose_t>,
-    right: Option<vr::TrackedDevicePose_t>,
-}
-
-impl CachedSpaces {
-    fn get_pose_impl(
-        &mut self,
-        xr_data: &OpenXrData<impl openxr_data::Compositor>,
-        session_data: &SessionData,
-        display_time: xr::Time,
-        hand: Option<Hand>,
-        origin: vr::ETrackingUniverseOrigin,
-    ) -> vr::TrackedDevicePose_t {
-        tracy_span!();
-        let space = match origin {
-            vr::ETrackingUniverseOrigin::Seated => &mut self.seated,
-            vr::ETrackingUniverseOrigin::Standing => &mut self.standing,
-            vr::ETrackingUniverseOrigin::RawAndUncalibrated => unreachable!(),
-        };
-
-        let pose = match hand {
-            None => &mut space.head,
-            Some(Hand::Left) => &mut space.left,
-            Some(Hand::Right) => &mut space.right,
-        };
-
-        if let Some(pose) = pose {
-            return *pose;
-        }
-
-        let (loc, velo) = if let Some(hand) = hand {
-            let pose_data = session_data.input_data.pose_data.get().unwrap();
-            let spaces = match hand {
-                Hand::Left => &pose_data.left_space,
-                Hand::Right => &pose_data.right_space,
-            };
-
-            if let Some(raw) = spaces.try_get_or_init_raw(xr_data, session_data, pose_data) {
-                raw.relate(session_data.get_space_for_origin(origin), display_time)
-                    .unwrap()
-            } else {
-                trace!("failed to get raw space, making empty pose");
-                (xr::SpaceLocation::default(), xr::SpaceVelocity::default())
-            }
-        } else {
-            session_data
-                .view_space
-                .relate(session_data.get_space_for_origin(origin), display_time)
-                .unwrap()
-        };
-
-        let ret = space_relation_to_openvr_pose(loc, velo);
-        *pose.insert(ret)
-    }
-}
-
-enum LoadedActions {
-    Legacy(LegacyActionData),
-    Manifest(ManifestLoadedActions),
 }
 
 struct ManifestLoadedActions {

@@ -1,9 +1,10 @@
-use super::{Input, PoseData, Profiles, WriteOnDrop};
+use super::{Input, InteractionProfile, Profiles};
 use crate::{
     input::LoadedActions,
-    openxr_data::{self, Hand},
+    openxr_data::{self, Hand, SessionData},
 };
-use log::{debug, warn};
+use glam::Quat;
+use log::{debug, trace, warn};
 use openvr as vr;
 use openxr as xr;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -124,11 +125,11 @@ impl<C: openxr_data::Compositor> Input<C> {
             return false;
         };
 
-        let hand_info = match hand {
-            Hand::Left => &self.openxr.left_hand,
-            Hand::Right => &self.openxr.right_hand,
-        };
-        let hand_path = hand_info.subaction_path;
+        let devices = self.devices.read().unwrap();
+
+        let controller = devices.get_controller(hand.into());
+
+        let hand_path = controller.subaction_path;
 
         let data = self.openxr.session_data.get();
 
@@ -328,10 +329,116 @@ impl LegacyActionData {
             main_xy_touch: set
                 .create_action("main-joystick-touch", "Main Joystick Touch", &leftright)
                 .unwrap(),
-            extra: Actions,
         };
 
-        Self { set, actions }
+        Self {
+            set,
+            left_spaces,
+            right_spaces,
+            actions,
+        }
+    }
+}
+
+pub fn setup_legacy_bindings(
+    instance: &xr::Instance,
+    session: &xr::Session<xr::AnyGraphics>,
+    legacy: &LegacyActionData,
+) {
+    debug!("setting up legacy bindings");
+
+    let actions = &legacy.actions;
+    for profile in Profiles::get().profiles_iter() {
+        const fn constrain<F>(f: F) -> F
+        where
+            F: for<'a> Fn(&'a str) -> xr::Path,
+        {
+            f
+        }
+        let stp = constrain(|s| instance.string_to_path(s).unwrap());
+        let bindings = profile.legacy_bindings(&stp);
+        let profile = stp(profile.profile_path());
+        instance
+            .suggest_interaction_profile_bindings(
+                profile,
+                &bindings.binding_iter(actions).collect::<Vec<_>>(),
+            )
+            .unwrap();
+    }
+
+    session.attach_action_sets(&[&legacy.set]).unwrap();
+    session
+        .sync_actions(&[xr::ActiveActionSet::new(&legacy.set)])
+        .unwrap();
+}
+
+pub(super) struct HandSpaces {
+    hand: Hand,
+    hand_path: xr::Path,
+
+    /// Based on the controller jsons in SteamVR, the "raw" pose
+    /// This is stored as a space so we can locate hand joints relative to it for skeletal data.
+    raw: RwLock<Option<xr::Space>>,
+}
+
+pub(super) struct SpaceReadGuard<'a>(RwLockReadGuard<'a, Option<xr::Space>>);
+impl Deref for SpaceReadGuard<'_> {
+    type Target = xr::Space;
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref().unwrap()
+    }
+}
+
+impl HandSpaces {
+    pub fn try_get_or_init_raw(
+        &self,
+        hand_profile: &Option<&dyn InteractionProfile>,
+        session_data: &SessionData,
+        actions: &LegacyActions,
+    ) -> Option<SpaceReadGuard> {
+        {
+            let raw = self.raw.read().unwrap();
+            if raw.is_some() {
+                return Some(SpaceReadGuard(raw));
+            }
+        }
+        {
+            let Some(profile) = hand_profile.as_ref() else {
+                trace!("no hand profile, no raw space will be created");
+                return None;
+            };
+
+            let offset = profile.offset_grip_pose(self.hand);
+            let translation = offset.w_axis.truncate();
+            let rotation = Quat::from_mat4(&offset);
+
+            let offset_pose = xr::Posef {
+                orientation: xr::Quaternionf {
+                    x: rotation.x,
+                    y: rotation.y,
+                    z: rotation.z,
+                    w: rotation.w,
+                },
+                position: xr::Vector3f {
+                    x: translation.x,
+                    y: translation.y,
+                    z: translation.z,
+                },
+            };
+
+            *self.raw.write().unwrap() = Some(
+                actions
+                    .grip_pose
+                    .create_space(&session_data.session, self.hand_path, offset_pose)
+                    .unwrap(),
+            );
+        }
+
+        Some(SpaceReadGuard(self.raw.read().unwrap()))
+    }
+
+    pub fn reset_raw(&self) {
+        *self.raw.write().unwrap() = None;
     }
 }
 

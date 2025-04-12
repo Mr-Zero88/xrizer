@@ -100,13 +100,13 @@ impl<C: openxr_data::Compositor> Input<C> {
         debug!("Loaded {} action sets.", sets.len());
 
         let devices = self.devices.read().unwrap();
-        let left_hand = devices
+        let left_hand_subaction_path = devices
             .get_controller(Hand::Left)
-            .get_controller_variables()
+            .get_controller_subaction_path()
             .ok_or(vr::EVRInputError::InvalidDevice)?;
-        let right_hand = devices
+        let right_hand_subaction_path = devices
             .get_controller(Hand::Right)
-            .get_controller_variables()
+            .get_controller_subaction_path()
             .ok_or(vr::EVRInputError::InvalidDevice)?;
 
         let actions = load_actions(
@@ -115,8 +115,8 @@ impl<C: openxr_data::Compositor> Input<C> {
             english.as_ref(),
             &mut sets,
             manifest.actions,
-            left_hand.subaction_path,
-            right_hand.subaction_path,
+            left_hand_subaction_path,
+            right_hand_subaction_path,
         )?;
         debug!("Loaded {} actions.", actions.len());
 
@@ -125,8 +125,8 @@ impl<C: openxr_data::Compositor> Input<C> {
         let legacy = session_data.input_data.legacy_actions.get_or_init(|| {
             LegacyActionData::new(
                 &self.openxr.instance,
-                left_hand.subaction_path,
-                right_hand.subaction_path,
+                left_hand_subaction_path,
+                right_hand_subaction_path,
             )
         });
 
@@ -136,8 +136,8 @@ impl<C: openxr_data::Compositor> Input<C> {
             .get_or_init(|| {
                 SkeletalInputActionData::new(
                     &self.openxr.instance,
-                    left_hand.subaction_path,
-                    right_hand.subaction_path,
+                    left_hand_subaction_path,
+                    right_hand_subaction_path,
                 )
             });
 

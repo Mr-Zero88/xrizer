@@ -557,7 +557,7 @@ mod tests {
                 event.is_none(),
                 "Got unexpected event: {} ({msg})",
                 event.unwrap().ty
-            );
+            );  
         };
 
         let update_action_state = |left_state, right_state| {
@@ -610,7 +610,10 @@ mod tests {
         };
 
         let hands = [LeftHand, RightHand];
-        // Initial state
+        
+        while let Some(event) = get_event() {
+            assert_eq!(event.ty, vr::EVREventType::TrackedDeviceActivated as u32);
+        }
 
         for hand in hands {
             let state = get_state(hand);

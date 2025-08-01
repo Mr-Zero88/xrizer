@@ -3,7 +3,7 @@ use std::ffi::c_char;
 
 #[derive(Default, macros::InterfaceImpl)]
 #[interface = "IVRApplications"]
-#[versions(007)]
+#[versions(007, 006)]
 pub struct Applications {
     vtables: Vtables,
 }
@@ -147,5 +147,34 @@ impl vr::IVRApplications007_Interface for Applications {
     fn AddApplicationManifest(&self, _: *const c_char, _: bool) -> vr::EVRApplicationError {
         crate::warn_unimplemented!("AddApplicationManifest");
         vr::EVRApplicationError::None
+    }
+}
+
+impl vr::IVRApplications006On007 for Applications {
+    fn GetTransitionState(&self) -> vr::EVRApplicationTransitionState {
+        crate::warn_unimplemented!("GetTransitionState");
+        vr::EVRApplicationTransitionState::None
+    }
+    fn GetApplicationsTransitionStateNameFromEnum(
+        &self,
+        state: vr::EVRApplicationTransitionState,
+    ) -> *const ::std::os::raw::c_char {
+        crate::warn_unimplemented!("GetApplicationsTransitionStateNameFromEnum");
+        match state {
+            vr::EVRApplicationTransitionState::None => "None\0".as_ptr() as *const c_char,
+            vr::EVRApplicationTransitionState::OldAppQuitSent => {
+                "OldAppQuitSent\0".as_ptr() as *const c_char
+            }
+            vr::EVRApplicationTransitionState::WaitingForExternalLaunch => {
+                "WaitingForExternalLaunch\0".as_ptr() as *const c_char
+            }
+            vr::EVRApplicationTransitionState::NewAppLaunched => {
+                "NewAppLaunched\0".as_ptr() as *const c_char
+            }
+        }
+    }
+    fn IsQuitUserPromptRequested(&self) -> bool {
+        crate::warn_unimplemented!("IsQuitUserPromptRequested");
+        false
     }
 }

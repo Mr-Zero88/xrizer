@@ -42,7 +42,7 @@ impl vr::IVRApplications007_Interface for Applications {
         );
 
         let process = Command::new(binary_path)
-            .args(launch_arguments.split_whitespace())
+            .args(arguments.split_whitespace())
             .current_dir(working_directory)
             .spawn();
 

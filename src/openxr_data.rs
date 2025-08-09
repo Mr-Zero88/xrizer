@@ -182,7 +182,7 @@ impl<C: Compositor> OpenXrData<C> {
                 xr::Event::ReferenceSpaceChangePending(_) => {
                     warn!("OpenXR reference space change pending!");
                 }
-                xr::Event::PerfSettingsEXT(_) => {      
+                xr::Event::PerfSettingsEXT(_) => {
                     warn!("OpenXR performance settings changed!");
                 }
                 xr::Event::VisibilityMaskChangedKHR(_) => {

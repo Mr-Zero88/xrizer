@@ -1,6 +1,9 @@
 use openvr as vr;
 use std::ffi::c_char;
 
+use log::info;
+use std::process::Command;
+
 #[derive(Default, macros::InterfaceImpl)]
 #[interface = "IVRApplications"]
 #[versions(007, 006)]
@@ -14,11 +17,42 @@ impl vr::IVRApplications007_Interface for Applications {
     }
     fn LaunchInternalProcess(
         &self,
-        _: *const c_char,
-        _: *const c_char,
-        _: *const c_char,
+        pch_binary_path: *const c_char,
+        pch_arguments: *const c_char,
+        pch_working_directory: *const c_char,
     ) -> vr::EVRApplicationError {
-        todo!()
+        crate::warn_unimplemented!("LaunchInternalProcess");
+
+        let binary_path = unsafe { std::ffi::CStr::from_ptr(pch_binary_path) }
+            .to_str()
+            .unwrap_or("")
+            .to_owned();
+        let arguments = unsafe { std::ffi::CStr::from_ptr(pch_arguments) }
+            .to_str()
+            .unwrap_or("")
+            .to_owned();
+        let working_directory = unsafe { std::ffi::CStr::from_ptr(pch_working_directory) }
+            .to_str()
+            .unwrap_or("")
+            .to_owned();
+
+        info!(
+            "LaunchInternalProcess called: {:?}, ARGS: {:?}, WD: {:?}",
+            binary_path, arguments, working_directory
+        );
+
+        let process = Command::new(binary_path)
+            .args(launch_arguments.split_whitespace())
+            .current_dir(working_directory)
+            .spawn();
+
+        match process {
+            Ok(_) => vr::EVRApplicationError::None,
+            Err(e) => {
+                info!("Failed to launch internal process: {}", e);
+                vr::EVRApplicationError::LaunchFailed
+            }
+        }
     }
     fn GetSceneApplicationStateNameFromEnum(
         &self,

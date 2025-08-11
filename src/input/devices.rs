@@ -150,7 +150,6 @@ impl XrTrackedDevice {
                     vr::ETrackedDeviceProperty::SerialNumber_String => {
                         let serial = self.xdev.as_ref()?.get_or_init_serial();
 
-
                         Some(serial)
                     }
                     vr::ETrackedDeviceProperty::ManufacturerName_String => {
@@ -285,7 +284,9 @@ impl XrTrackedDevice {
         
         //HACK: Trackers will freeze in VRChat like this, which is more desirable when the pose is invalid.
         pose.bDeviceIsConnected = true;
-        pose.bPoseIsValid = location.location_flags.contains(xr::SpaceLocationFlags::POSITION_VALID);
+        pose.bPoseIsValid = location
+            .location_flags
+            .contains(xr::SpaceLocationFlags::POSITION_VALID);
 
         Some(pose)
     }

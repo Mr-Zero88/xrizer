@@ -189,7 +189,11 @@ impl<C: openxr_data::Compositor> Input<C> {
             Hand::Left => &legacy.left_spaces,
             Hand::Right => &legacy.right_spaces,
         }
-        .try_get_or_init_raw(&controller.get_interaction_profile(), session_data, &legacy.actions) else {
+        .try_get_or_init_raw(
+            &controller.get_interaction_profile(),
+            session_data,
+            &legacy.actions,
+        ) else {
             self.get_estimated_bone_summary(session_data, summary_type, summary_data, hand);
             return;
         };
@@ -266,7 +270,10 @@ impl<C: openxr_data::Compositor> Input<C> {
             let legacy_hand_state = self.get_finger_state(session_data, hand);
 
             // HACK: use estimated thumb on index to fix gestures
-            if i == 0 && controller.get_interaction_profile().unwrap().profile_path() == "/interaction_profiles/valve/index_controller" {
+            if i == 0
+                && controller.get_interaction_profile().unwrap().profile_path()
+                    == "/interaction_profiles/valve/index_controller"
+            {
                 *curl_value = legacy_hand_state.thumb;
             } else {
                 *curl_value = curl;

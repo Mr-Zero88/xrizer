@@ -787,12 +787,36 @@ impl vr::IVRCompositor028_Interface for Compositor {
 
     fn GetLastPoseForTrackedDeviceIndex(
         &self,
-        _unDeviceIndex: vr::TrackedDeviceIndex_t,
-        _pOutputPose: *mut vr::TrackedDevicePose_t,
-        _pOutputGamePose: *mut vr::TrackedDevicePose_t,
+        unDeviceIndex: vr::TrackedDeviceIndex_t,
+        pOutputPose: *mut vr::TrackedDevicePose_t,
+        pOutputGamePose: *mut vr::TrackedDevicePose_t,
     ) -> vr::EVRCompositorError {
-        todo!()
+        if pOutputPose.is_null() || pOutputGamePose.is_null() {
+            return vr::EVRCompositorError::RequestFailed;
+        }
+
+        let pose = self
+            .input
+            .force(|_| Input::new(self.openxr.clone()))
+            .get_device_pose(unDeviceIndex, None);
+
+        match pose {
+            Some(p) => {
+                unsafe {
+                    std::ptr::write_unaligned(pOutputPose, p);
+                };
+                unsafe {
+                    std::ptr::write_unaligned(pOutputGamePose, p);
+                };
+                vr::EVRCompositorError::None
+            }
+            None => {
+                info!("No pose found for device {}", unDeviceIndex);
+                vr::EVRCompositorError::RequestFailed
+            }
+        }
     }
+
     fn GetLastPoses(
         &self,
         render_pose_array: *mut vr::TrackedDevicePose_t,

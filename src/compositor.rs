@@ -48,24 +48,31 @@ enum FrameState {
 }
 
 impl FrameState {
-    fn advance_to(&mut self, new: Self) {
+    fn advance_to(&mut self, new: Self) -> Option<Self> {
         let old = *self;
-        let mut allowed = |a| {
-            assert!(new == a, "Tried to advance from {:?} to {new:?}", *self);
+        let mut allowed = |a| -> Option<FrameState> {
+            if new != a {
+                info!(
+                    "Tried to advance from {:?} to {new:?} which is not allowed",
+                    *self
+                );
+                return None;
+            }
             *self = a;
+            Some(new)
         };
 
-        match old {
-            Self::Waited => {
-                allowed(Self::Begun);
+        let result: Option<FrameState> = match old {
+            Self::Waited => allowed(Self::Begun),
+            Self::Begun => {
+                *self = new;
+                Some(new)
             }
-            Self::Begun => *self = new,
-            Self::Submitted => {
-                allowed(Self::Waited);
-            }
-        }
+            Self::Submitted => allowed(Self::Waited),
+        };
 
         trace!("advanced frame state from {old:?} to {new:?}");
+        result
     }
 }
 
@@ -126,10 +133,15 @@ impl Compositor {
     fn maybe_begin_frame(&self, session_data: &SessionData) {
         tracy_span!();
         let mut frame_lock = { session_data.comp_data.0.lock().unwrap() };
-        self.frame_state
+        let Some(_) = self
+            .frame_state
             .lock()
             .unwrap()
-            .advance_to(FrameState::Begun);
+            .advance_to(FrameState::Begun)
+        else {
+            debug!("not starting frame - already begun or submitted");
+            return;
+        };
         let Some(ctrl) = frame_lock.as_mut() else {
             debug!("no frame controller - not starting frame");
             return;

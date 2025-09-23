@@ -2,6 +2,7 @@
 
 mod applications;
 mod chaperone;
+mod chaperone_setup;
 mod clientcore;
 mod compositor;
 mod graphics_backends;

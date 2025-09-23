@@ -1,6 +1,7 @@
 use crate::{
     applications::Applications,
     chaperone::Chaperone,
+    chaperone_setup::ChaperoneSetup,
     compositor::Compositor,
     input::Input,
     misc_unknown::UnknownInterfaces,
@@ -222,6 +223,7 @@ impl IVRClientCore003_Interface for ClientCore {
                 })
             })
             .or_else(|| self.try_interface(interface, |_| Chaperone::new(openxr.clone())))
+            .or_else(|| self.try_interface(interface, |_| ChaperoneSetup::new()))
             .or_else(|| self.try_interface(interface, |_| Applications::default()))
             .or_else(|| self.try_interface(interface, |_| OverlayView::default()))
             .or_else(|| self.try_interface(interface, |_| Screenshots::default()))
@@ -242,6 +244,7 @@ impl IVRClientCore003_Interface for ClientCore {
                 RenderModels::supported_versions(),
                 OverlayMan::supported_versions(),
                 Chaperone::supported_versions(),
+                ChaperoneSetup::supported_versions(),
                 Applications::supported_versions(),
                 OverlayView::supported_versions(),
                 Screenshots::supported_versions(),

@@ -143,6 +143,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         "IVRScreenshots",
         "IVRClientCore",
         "IVRChaperone",
+        "IVRChaperoneSetup",
         "IVRApplications",
         "IVRSettings",
     ];

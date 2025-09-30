@@ -583,6 +583,15 @@ impl<C: openxr_data::Compositor> vr::IVRInput010_Interface for Input<C> {
                     .ok()
                     .and_then(|interaction_profile| {
                         info!("Interaction profile: {}", interaction_profile.into_raw());
+
+                        let Some(per_profile_bindings) = loaded_actions.per_profile_bindings
+                            .get(&interaction_profile)
+                        else {
+                            return None;
+                        };
+
+                        info!("Per profile bindings: {}", per_profile_bindings.len());
+
                         loaded_actions
                             .try_get_bindings(action_handle, interaction_profile)
                             .ok()

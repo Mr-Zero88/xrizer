@@ -595,14 +595,16 @@ impl<C: openxr_data::Compositor> vr::IVRInput010_Interface for Input<C> {
         }
 
         let mut bindings =
-            get_hand_bindings(Hand::Left, self.openxr.clone(), action_handle).unwrap();
+            get_hand_bindings(Hand::Left, self.openxr.clone(), action_handle).unwrap_or_else(Vec::new);
         bindings
-            .extend(get_hand_bindings(Hand::Right, self.openxr.clone(), action_handle).unwrap());
-
+            .extend(get_hand_bindings(Hand::Right, self.openxr.clone(), action_handle).unwrap_or_else(Vec::new));
+        
         let mut index = 0;
 
         for binding in bindings.iter() {
+            info!("Binding: {}", binding.into_raw());
             if let Some(hand) = Hand::try_from(*binding).ok() {
+                info!("Hand: {:?} {}", hand, index);
                 match hand {
                     Hand::Left => origins[index] = self.left_hand_key.data().as_ffi(),
                     Hand::Right => origins[index] = self.right_hand_key.data().as_ffi(),

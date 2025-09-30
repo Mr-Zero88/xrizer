@@ -123,7 +123,9 @@ impl<C: Compositor> OpenXrData<C> {
         let instance = entry
             .create_instance(
                 &xr::ApplicationInfo {
-                    application_name: get_app_name().as_deref().unwrap_or("XRizer"),
+                    application_name: ("XRizer_".to_owned()
+                        + &get_app_name().unwrap_or_else(|| "Unknown".into()))
+                        .as_ref(),
                     application_version: 0,
                     ..Default::default()
                 },
@@ -686,6 +688,18 @@ impl TryFrom<vr::TrackedDeviceIndex_t> for Hand {
         match value {
             x if x == Hand::Left as u32 => Ok(Hand::Left),
             x if x == Hand::Right as u32 => Ok(Hand::Right),
+            _ => Err(()),
+        }
+    }
+}
+
+impl TryFrom<xr::Path> for Hand {
+    type Error = ();
+    #[inline]
+    fn try_from(value: xr::Path) -> Result<Self, Self::Error> {
+        match value.into_raw() {
+            1 => Ok(Hand::Left),
+            2 => Ok(Hand::Right),
             _ => Err(()),
         }
     }

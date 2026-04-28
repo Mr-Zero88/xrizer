@@ -1095,11 +1095,25 @@ impl vr::IVROverlay028_Interface for OverlayMan {
     }
     fn GetOverlayTransformAbsolute(
         &self,
-        _: vr::VROverlayHandle_t,
-        _: *mut vr::ETrackingUniverseOrigin,
-        _: *mut vr::HmdMatrix34_t,
+        handle: vr::VROverlayHandle_t,
+        origin: *mut vr::ETrackingUniverseOrigin,
+        transform: *mut vr::HmdMatrix34_t,
     ) -> vr::EVROverlayError {
-        todo!()
+        get_overlay!(self, handle, overlay);
+
+        if origin.is_null() || transform.is_null() {
+            vr::EVROverlayError::InvalidParameter
+        } else {
+            if let Some((stored_origin, stored_transform)) = overlay.transform {
+                unsafe {
+                    origin.write(stored_origin);
+                    transform.write(stored_transform)
+                }
+                vr::EVROverlayError::None
+            } else {
+                vr::EVROverlayError::WrongTransformType
+            }
+        }
     }
     fn SetOverlayTransformAbsolute(
         &self,

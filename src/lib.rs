@@ -6,6 +6,7 @@ mod clientcore;
 mod compositor;
 mod graphics_backends;
 mod input;
+mod inputinternal;
 mod misc_unknown;
 mod openxr_data;
 mod overlay;

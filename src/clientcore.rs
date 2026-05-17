@@ -3,6 +3,7 @@ use crate::{
     chaperone::Chaperone,
     compositor::Compositor,
     input::Input,
+    inputinternal::InputInternal,
     misc_unknown::UnknownInterfaces,
     openxr_data::{OpenXrData, RealOpenXrData},
     overlay::OverlayMan,
@@ -226,6 +227,7 @@ impl IVRClientCore003_Interface for ClientCore {
                 })
             })
             .or_else(|| self.try_interface(interface, |_| Input::new(openxr.clone())))
+            .or_else(|| self.try_interface(interface, |_| InputInternal::new(openxr.clone())))
             .or_else(|| self.try_interface(interface, |_| RenderModels::default()))
             .or_else(|| {
                 self.try_interface(interface, |injector| {
@@ -250,6 +252,7 @@ impl IVRClientCore003_Interface for ClientCore {
                 System::supported_versions(),
                 Compositor::supported_versions(),
                 Input::<Compositor>::supported_versions(),
+                InputInternal::<Compositor>::supported_versions(),
                 RenderModels::supported_versions(),
                 OverlayMan::supported_versions(),
                 Chaperone::supported_versions(),

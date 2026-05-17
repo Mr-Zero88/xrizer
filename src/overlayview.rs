@@ -2,7 +2,7 @@ use openvr as vr;
 
 #[derive(Default, macros::InterfaceImpl)]
 #[interface = "IVROverlayView"]
-#[versions(003)]
+#[versions(003, 002)]
 pub struct OverlayView {
     vtables: Vtables,
 }

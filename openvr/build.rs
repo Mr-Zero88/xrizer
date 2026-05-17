@@ -96,6 +96,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         version!(1, 23, 7),
         version!(1, 16, 8),
         version!(1, 14, 15),
+        version!(1, 9, 16),
         version!(1, 8, 19),
         version!(1, 7, 15),
         version!(1, 4, 18),
@@ -151,6 +152,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         "IVRChaperone",
         "IVRApplications",
         "IVRSettings",
+        "IVRInputInternal",
     ];
 
     for interface in INTERFACES {

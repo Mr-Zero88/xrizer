@@ -40,28 +40,29 @@ impl<C: openxr_data::Compositor> Input<C> {
         session_data: &SessionData,
         manifest_path: &Path,
     ) -> Result<(), vr::EVRInputError> {
-        match self.loaded_actions_path.get() {
-            Some(p) => {
-                assert_eq!(p, manifest_path);
+        if let Some(loaded) = session_data.input_data.actions.get() {
+            error!(
+                "{} actions are already loaded!",
+                if matches!(loaded, super::LoadedActions::Legacy(_)) {
+                    "Legacy"
+                } else {
+                    "Manifest"
+                }
+            );
+            return Err(vr::EVRInputError::MismatchedActionManifest);
+        }
+
+        if let Err(existing_path) = self.loaded_actions_path.set(manifest_path.to_path_buf()) {
+            if existing_path == manifest_path {
                 if session_data.input_data.actions.get().is_some() {
                     return Ok(());
                 }
-            }
-            None => {
-                if let Some(loaded) = session_data.input_data.actions.get() {
-                    error!(
-                        "{} actions are already loaded!",
-                        if matches!(loaded, super::LoadedActions::Legacy(_)) {
-                            "Legacy"
-                        } else {
-                            "Manifest"
-                        }
-                    );
-                    return Err(vr::EVRInputError::MismatchedActionManifest);
-                }
-                self.loaded_actions_path
-                    .set(manifest_path.to_path_buf())
-                    .unwrap();
+            } else {
+                warn!(
+                    "Action manifest path already set to {}, ignoring new path {}",
+                    existing_path.display(),
+                    manifest_path.display()
+                );
             }
         }
 

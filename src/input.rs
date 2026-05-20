@@ -1187,6 +1187,15 @@ impl<C: openxr_data::Compositor> vr::IVRInput010_Interface for Input<C> {
             data = self.openxr.session_data.get();
         }
 
+        // we need to restart the session to unload a old manifest if the new manifest has a diffrent path than the old one
+        if let Some(p) = self.loaded_actions_path.get()
+            && p != path
+        {
+            drop(data);
+            self.openxr.restart_session();
+            data = self.openxr.session_data.get();
+        }
+
         let ret = match self.load_action_manifest(&data, path) {
             Ok(_) => vr::EVRInputError::None,
             Err(e) => e,

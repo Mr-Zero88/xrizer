@@ -80,16 +80,16 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
     steps:
     - uses: actions/checkout@v4
+    - name: Format check
+      run: cargo fmt --check
+    - name: Clippy
+      run: cargo clippy --workspace --all-targets
     - name: Build
       run: cargo xbuild --release --features static-openxr --verbose
     - name: Run tests
       run: cargo test --verbose
     - name: Run tests with miri
       run: cargo +nightly miri test
-    - name: Format check
-      run: cargo fmt --check
-    - name: Clippy
-      run: cargo clippy --workspace --all-targets
     - name: Copy to directory
       run: mkdir -p out/xrizer && cp -r -L target/release/bin out/xrizer
     - name: Upload

@@ -457,8 +457,8 @@ pub fn handle_dpad_binding(
     {
         f
     }
-    let maybe_find_action = constrain(|a, direction| {
-        let output = &a.as_ref()?.output;
+    let maybe_find_action = constrain(|action, _direction| {
+        let output = &action.as_ref()?.output;
         let ret = context.actions.contains_key(&output.path);
         ret.then_some(output)
     });

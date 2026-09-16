@@ -80,3 +80,7 @@ libloading = "0.8.5"
 test-cdylib = "1.1.0"
 fakexr = { path = "fakexr" }
 macros = { path = "macros", features = ["test"]}
+
+[patch.crates-io]
+openxr = { git = "https://github.com/Ralith/openxrs", package = "openxr" }
+openxr-sys = { git = "https://github.com/Ralith/openxrs", package = "openxr-sys" }

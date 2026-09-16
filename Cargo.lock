@@ -1276,20 +1276,17 @@ dependencies = [
 [[package]]
 name = "openxr"
 version = "0.21.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c2f814a47d257c79c762bc64042859661b6aa2f57cfa1f0ad4d778f419aeb0e"
+source = "git+https://github.com/Ralith/openxrs#84b9b766d00ba4ac87aa0938c3008a53d65e3fb7"
 dependencies = [
  "libc",
  "libloading 0.9.0",
- "ndk-context",
  "openxr-sys",
 ]
 
 [[package]]
 name = "openxr-sys"
 version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b8d66081de28c2fa40216182a37292fe38aeea20bc184612504d5e64daf5359"
+source = "git+https://github.com/Ralith/openxrs#84b9b766d00ba4ac87aa0938c3008a53d65e3fb7"
 dependencies = [
  "cmake",
  "libc",
